@@ -13,10 +13,9 @@ import {
     TextDocument,
     window
 } from 'vscode';
-import * as path from 'path';
-import * as debounce from 'lodash.debounce';
+import debounce from 'lodash/debounce';
 import * as Rsync from 'rsync';
-import * as chokidar from 'chokidar';
+import chokidar from 'chokidar';
 import { Config, Site } from './Config';
 import * as child from 'child_process';
 import { exists, lstat } from 'fs';
