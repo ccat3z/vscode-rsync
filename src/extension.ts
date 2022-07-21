@@ -16,7 +16,7 @@ import {
 } from 'vscode';
 import debounce from 'lodash/debounce';
 import path from 'path';
-import * as Rsync from 'rsync';
+import Rsync from 'rsync';
 import chokidar from 'chokidar';
 import { Config, Site } from './Config';
 import * as child from 'child_process';
