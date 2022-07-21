@@ -11,9 +11,11 @@ import {
     workspace,
     commands,
     TextDocument,
-    window
+    window,
+    extensions as vscExts
 } from 'vscode';
 import debounce from 'lodash/debounce';
+import path from 'path';
 import * as Rsync from 'rsync';
 import chokidar from 'chokidar';
 import { Config, Site } from './Config';
@@ -34,7 +36,7 @@ const getConfig = (): Config => new Config(workspace.getConfiguration('sync-rsyn
 let currentSync: child.ChildProcess = undefined;
 let syncKilled = true;
 
-const execute = function (config: Config, cmd: string, args: string[] = [], shell: string = undefined): Promise<number> {
+const execute = function (config: Config, cmd: string, args: string[] = [], shell: string = undefined, cwd: string = undefined): Promise<number> {
     return new Promise<number>(resolve => {
 
         let error = false;
@@ -55,12 +57,12 @@ const execute = function (config: Config, cmd: string, args: string[] = [], shel
             // when the platform is win32, spawn would add /s /c flags, making it impossible for the 
             // shell to be something other than cmd or powershell (e.g. bash)
             args = ["'", cmd].concat(args, "'");
-            currentSync = child.spawn(shell + " -c", args, { stdio: 'pipe', shell: "cmd.exe" });
+            currentSync = child.spawn(shell + " -c", args, { stdio: 'pipe', shell: "cmd.exe", cwd });
         } else if (process.platform === 'win32' && config.useWSL) {
             args = [cmd].concat(args);
-            currentSync = child.spawn("wsl", args, { stdio: 'pipe', shell: "cmd.exe" });
+            currentSync = child.spawn("wsl", args, { stdio: 'pipe', shell: "cmd.exe", cwd });
         } else {
-            currentSync = child.spawn(cmd, args, { stdio: 'pipe', shell: shell });
+            currentSync = child.spawn(cmd, args, { stdio: 'pipe', shell: shell, cwd });
         }
 
         currentSync.on('error', function (err: { code: string, message: string }) {
@@ -97,6 +99,13 @@ const runCommand = function (site: Site, config: Config, command: string[]): Pro
     let args = command.slice(1);
     return execute(config, _command, args, site.executableShell);
 };
+
+const isIgnoredByGit = async function (config: Config, filePath: string): Promise<boolean> {
+    let dir = path.dirname(filePath);
+    let basename = path.basename(filePath);
+
+    return await execute(config, 'git', ['check-ignore', basename], undefined, dir) != 1;
+}
 
 const syncSite = async function (site: Site, config: Config, { down, dry }: { down: boolean, dry: boolean }): Promise<boolean> {
 
@@ -234,6 +243,11 @@ const sync = async function (config: Config, { down, dry }: { down: boolean, dry
 };
 
 const syncFile = async function (config: Config, file: string, down: boolean): Promise<void> {
+    file = config.translatePath(file);
+    if (/* config.skipGitIgnore && */ await isIgnoredByGit(config, file)) {
+        outputChannel.appendLine('skip ' + file);
+        return;
+    }
 
     statusBar.color = 'mediumseagreen';
     statusBar.text = createStatusText('$(sync)');
@@ -261,8 +275,6 @@ const syncFile = async function (config: Config, file: string, down: boolean): P
         }
 
         let path = site.localPath;
-
-        file = config.translatePath(file);
 
         if (file.startsWith(path)) {
 
